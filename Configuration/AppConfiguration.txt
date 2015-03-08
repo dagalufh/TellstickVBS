@@ -1,0 +1,9 @@
+Action_Repeat_Minutes;0
+Action_Repeat_Times;0
+Weather_Updater_Minutes;40
+AutoRemote_Key;
+AutoRemote_Pass;
+CityCountry;Skovde
+CityCountryID;2677234
+GoodCodes;300,301,600,701,800,801,802,803,804
+PathToTDTool;C:\Program Files\

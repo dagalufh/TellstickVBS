@@ -1,0 +1,515 @@
+<html>
+	<head>
+		<title>VBS_Tellstick</title>
+		<HTA:APPLICATION 
+			 APPLICATIONNAME="VBS_Tellstick"
+			 SCROLL="yes"
+			 SINGLEINSTANCE="yes"
+			 WINDOWSTATE="normal"
+			 BORDER="thin">
+			 <script type="text/javascript" src="includes/jquery-1.11.1.min.js"></script>
+			 <script type="text/javascript" src="includes/functions.js"></script>
+	</head>
+	
+	
+	<script language="VBScript">
+		Dim ArrayOfTasks, IncludedByHTA, DocumentLocation, OptionsArray
+		' Define the global objects needed
+		Set objShell = CreateObject ("Shell.Application")
+		Set fso = CreateObject("Scripting.FileSystemObject")
+		Set objShell_wscript= CreateObject("WScript.Shell")
+		
+		
+		
+		' Define the options
+		'Dim Opt_Action_Repeat_Minutes, Opt_Action_Repeat_Times, Opt_Weather_Updater_Minutes,Opt_AutoRemote_Key, Opt_AutoRemote_Pass, Opt_CityCountry, CityCountryID, Opt_GoodCodes
+		Dim Time_Sunrise, Time_Sunset, CurrentWeather
+		Dim SystemSchedule_Reset_Exists, SystemSchedule_UpdateWeather_Exists
+		
+		Sub BrowseFolder ()
+			' Allows the user to browse for a folder instead of having to type it.
+			Set SelectedFolder = objShell.BrowseForFolder(0,"Select Folder that contains tdtools.exe", 0)
+			
+			if not SelectedFolder is nothing then
+				' Get the folders path
+				Set FolderItem = SelectedFolder.Self
+					
+				' Update the correct input tag with the selected path.
+				If(fso.FileExists(FolderItem.Path & "\" & "tdtool.exe")) Then
+					document.getElementById("Path_To_tdTools_Exists").innerHTML = "&#x2713;"
+				Else 
+					document.getElementById("Path_To_tdTools_Exists").innerHTML = "&#x2717;"
+				End If
+				
+				Path_To_tdTools.value = FolderItem.Path & "\"
+			End if
+		End Sub
+	
+	
+		Sub Include (File)
+			
+		
+			Dim moduleContents, moduleHandle
+			' Get the directory that contains the modules
+			moduleDirectory = DocumentLocation & "\Actions\"
+			
+			' Open the script file and read the entire contents
+			Set moduleHandle = fso.OpenTextFile(moduleDirectory & File, 1)
+			moduleContents = moduleHandle.ReadAll()
+			
+			' Execute it to include it in the current running script.
+			ExecuteGlobal moduleContents
+
+		End Sub
+		
+		Function CheckConfigFileExists()
+			If (fso.FIleExists(DocumentLocation & "\Configuration\AppConfiguration.txt")) Then
+				CheckConfigFileExists = True
+			Else
+				CheckConfigFileExists = False
+			End If			
+		End Function
+		
+		Function CheckSystemSchedules (ScheduledTasksArray)
+			Dim ScheduledTask
+			
+			If Not (TypeName(ScheduledTasksArray) = "String") Then
+				For Each ScheduledTask in ScheduledTasksArray
+					If (ScheduledTask.DeviceID = "Application") Then	
+						For Each Action in ScheduledTask.Action_On
+							If (inStr(Action.TaskName,"Reset")>0) Then
+								SystemSchedule_Reset_Exists = True
+							End If
+							If (inStr(Action.TaskName,"UpdateWeather")>0) Then
+								SystemSchedule_UpdateWeather_Exists = True
+							End If
+						Next
+					End If
+				Next
+			End If
+
+			Const ssfSTARTUP = &H7
+			Set startupFolder = objShell.NameSpace(ssfSTARTUP)
+			
+			If Not startupFolder Is Nothing Then
+				If Not (fso.FileExists(startupFolder.Self.Path & "\vbs_tellstick_reset.vbs.lnk")) and (UBound(ScheduledTasksArray)>-1) Then
+					Set ResetLnk = objShell_wscript.CreateShortcut(startupFolder.Self.Path & "\vbs_tellstick_reset.vbs.lnk")
+					ResetLnk.TargetPath = DocumentLocation & "\Actions\ResetScheduledTasks.vbs"
+					ResetLnk.WindowStyle = 0
+					ResetLnk.Description  = "Script to reset Tellstick devices to match the schedules set."
+					ResetLnk.WorkingDirectory  = DocumentLocation & "\Actions"
+					ResetLnk.Save
+					document.getElementById("ResetScheduleExists").innerHTML = "Exists"
+				Else 
+					document.getElementById("ResetScheduleExists").innerHTML = "Exists"
+				End If
+			Else
+				objShell_wscript.LogEvent 4, "Unable to locate users startup folder."
+			End If
+
+
+			' This creates the schedule for updating weather information on a regular basis.
+			If (Not SystemSchedule_UpdateWeather_Exists) and (UBound(ScheduledTasksArray)>-1) Then
+				objShell_wscript.Run "SchTasks.exe /create /SC MINUTE /MO " & Opt_Weather_Updater_Minutes & " /TN " & chr(34) & "VBS_Tellstick\Application_On_UpdateWeather" & chr(34) & " /TR " & chr(34) & DocumentLocation & "\Actions\UpdateScheduledTasks.vbs" & chr(34) ,0, True
+				Result = True
+			End If			
+			CheckSystemSchedules = Result
+		End Function
+		
+		
+		Sub DeleteTask (TaskID)
+			Confirmation = MsgBox("The following scheduled task will now be deleted: " & TaskID, vbOKCancel, "TellstickVBS - Removal of Schedule")
+		
+			If Confirmation = 2 Then
+				Exit Sub
+			Else
+				Result = objShell_wscript.Run("schtasks /delete /tn " & chr(34) & TaskID & chr(34) & " /f",0,True)
+				
+				If (Result <> 0) Then
+					MsgBox "Failed to delete the scheduled task. Try to do it manually from the Scheduled Tasks interface."
+				End If
+				
+				ArrayOfTasks = FetchScheduledTasks
+				ScheduleListBuilder ArrayOfTasks
+			End If
+		End Sub
+		
+		Sub ListDevices
+			If (fso.FileExists(PathToTDTool)) Then
+				
+				objShell_wscript.run chr(34) & DocumentLocation & "Requirements\tdtools.exe -l " & chr(34) & " > " & DocumentLocation & "\Temp_DeviceList.txt",1,true
+			End If
+		End Sub
+		
+		Sub LoadOptions
+			ReadOptions
+								
+			' Refresh the input values on Options page.
+			Action_Repeat_Minutes.Value = Opt_Action_Repeat_Minutes
+			Action_Repeat_Times.Value = Opt_Action_Repeat_Times
+			Weather_Updater_Minutes.Value = Opt_Weather_Updater_Minutes
+			AutoRemote_Key.Value = Opt_AutoRemote_Key
+			AutoRemote_Pass.Value = Opt_AutoRemote_Pass
+			CityCountry.Value = Opt_CityCountry
+			GoodCodes.Value = Opt_GoodCodes
+			Path_To_tdTools.value = Opt_PathToTDTool
+			
+			
+			If (CityCountryID = "0") Then
+				document.getElementById("Select_Weather_Good").disabled = true
+				document.getElementById("Select_Weather_Bad").disabled = true
+				document.getElementById("Select_Weather_Good_Time").disabled = true
+				document.getElementById("Select_Weather_Bad_Time").disabled = true
+				document.getElementById("Select_Controller").options(1).disabled = true
+				document.getElementById("Select_Controller").options(2).disabled = true
+			Else
+				document.getElementById("Select_Weather_Good").disabled = false
+				document.getElementById("Select_Weather_Bad").disabled = false
+				document.getElementById("Select_Weather_Good_Time").disabled = false
+				document.getElementById("Select_Weather_Bad_Time").disabled = false		
+				document.getElementById("Select_Controller").options(1).disabled = false
+				document.getElementById("Select_Controller").options(2).disabled = false
+			End If
+			
+			
+		End	Sub
+		
+		Sub Save_Options
+			' Overwrite current configurationfile with a new one.
+			Set AppConfiguration = fso.CreateTextFile(DocumentLocation & "\Configuration\AppConfiguration.txt",True)
+				AppConfiguration.WriteLine "Action_Repeat_Minutes;" & Action_Repeat_Minutes.Value
+				AppConfiguration.WriteLine "Action_Repeat_Times;" & Action_Repeat_Times.Value
+				AppConfiguration.WriteLine "Weather_Updater_Minutes;" & Weather_Updater_Minutes.Value
+				AppConfiguration.WriteLine "AutoRemote_Key;" & AutoRemote_Key.Value
+				AppConfiguration.WriteLine "AutoRemote_Pass;" & AutoRemote_Pass.Value
+				AppConfiguration.WriteLine "CityCountry;" & CityCountry.Value
+				AppConfiguration.WriteLine "CityCountryID;" & CityCountryID
+				AppConfiguration.WriteLine "GoodCodes;" & GoodCodes.Value
+				AppConfiguration.WriteLine "PathToTDTool;" & Path_To_tdTools.Value
+			AppConfiguration.Close
+			
+			LoadOptions
+			' Should recreate the repetitive schedule for updating weather conditions.
+			objShell_wscript.Run "SchTasks.exe /create /SC MINUTE /MO " & Opt_Weather_Updater_Minutes & " /TN " & chr(34) & "VBS_Tellstick\Application_On_UpdateWeather" & chr(34) & " /TR " & chr(34) & DocumentLocation & "\Actions\UpdateScheduledTasks.vbs" & chr(34) & " /F",0, True
+		End Sub
+		
+		Sub ScheduleListBuilder (TasksInScheduler)
+			' Clear out any values in the Scheduled Table
+			Set ScheduleBody = document.getElementById("ScheduledEvents_Body")
+			
+			
+			' Create a new table
+			Set Schedule = document.createElement("table")
+			Schedule.setAttribute "id","ScheduledEvents_Body_Table"
+			ScheduleBody.appendChild Schedule
+			
+			If Not (TypeName(TasksInScheduler) = "String") Then
+				ScheduleBody.removeChild(ScheduleBody.childNodes(0))
+				For Each Value in TasksInScheduler				
+				
+					If Not (Value.DeviceID = "Application") Then
+						' Fetch the element to start adding new things to it.
+						Set Schedule = document.getElementById("ScheduledEvents_Body_Table")
+						
+						Set newRow = Schedule.insertRow(Schedule.rows.length)
+						newRow.className = "Headline_Second"
+						
+						Set newName = newRow.insertCell(0)
+						newName.className = "Long_2"
+						Set newOriginalTime = newRow.InsertCell(1)
+						newOriginalTime.className = "MediumLong"
+						Set newNextTime = newRow.InsertCell(2)
+						newNextTime.className = "MediumLong"
+						Set newTriggerDays = newRow.InsertCell(3)
+						newTriggerDays.className = "Long_3"
+						Set newRandomize = newRow.InsertCell(4)
+						newRandomize.className = "MediumLong"
+						Set newWeather_Good = newRow.InsertCell(5)
+						newWeather_Good.className = "MediumLong"
+						Set newWeather_Bad = newRow.InsertCell(6)
+						newWeather_Bad.className = "MediumLong"
+						
+						newName.innerHTML = "Device: " & Value.DeviceID & "<br>Status: " & Value.CurrentStatus
+						newOriginalTime.innerHTML = "Original Time"
+						
+						newNextTime.innerHTML = "Next Trigger Time"
+						newTriggerDays.innerHTML = "Trigger Days"
+						newRandomize.innerHTML = "Randomizer"
+						newWeather_Good.innerHTML = "Good Weahter"
+						newWeather_Bad.innerHTML = "Bad Weahter"
+						
+						
+						newName.colspan="2"
+						AddRow Value.Action_On, Schedule
+						AddRow Value.Action_Off, Schedule
+						Set DummyRow = Schedule.insertRow(Schedule.rows.length)
+						Set DummyCell = DummyRow.InsertCell(0)
+					Else
+						document.getElementById("CheckWeatherExists").innerHTML = "Exists"
+					End if
+				Next
+			End If
+		
+		End Sub
+		
+		Sub SetDefaultOptions
+			Action_Repeat_Minutes.Value = "0"
+			Action_Repeat_Times.Value = "0"
+			Weather_Updater_Minutes.Value = "30"
+			AutoRemote_Key.Value = ""
+			AutoRemote_Pass.Value = ""
+			CityCountry.Value = ""
+			CityCountryID = "0"
+			GoodCodes.Value = "300,301,600,701,800,801,802,803,804"
+		End Sub
+		
+		Sub AddRow (ActionArray, Schedule)
+		
+			If (Ubound(ActionArray) >= 0) Then
+				For i = 0 To UBound(ActionArray)
+					Set newRow_ActionOff = Schedule.insertRow(Schedule.rows.length)
+					Set newStatus_ActionOff  = newRow_ActionOff.insertCell(0)
+					Set newName_ActionOff  = newRow_ActionOff.insertCell(1)
+					Set newOriginalStart_ActionOff  = newRow_ActionOff.insertCell(2)
+					Set newStart_ActionOff  = newRow_ActionOff.insertCell(3)
+					Set newDays_ActionOff  = newRow_ActionOff.insertCell(4)
+					Set newRandomizer_ActionOff  = newRow_ActionOff.insertCell(5)
+					Set newWeather_Good_ActionOff  = newRow_ActionOff.insertCell(6)
+					Set newWeather_Bad_ActionOff  = newRow_ActionOff.insertCell(7)
+					Set Commands_ActionOff  = newRow_ActionOff.insertCell(8)
+					
+					
+					newName_ActionOff.innerHTML = ActionArray(i).TaskName
+					If (inStr(ActionArray(i).TaskName,"Application")>0) Then
+						newStatus_ActionOff.innerHTML = ""
+						newDays_ActionOff.innerHTML = "N/A"
+						newRandomizer_ActionOff.innerHTML = "N/A"
+						newWeather_Good_ActionOff.innerHTML = "N/A"
+						newWeather_Bad_ActionOff.innerHTML = "N/A"
+						
+						If (inStr(ActionArray(i).TaskName,"Reset")>0) Then
+							newStart_ActionOff.innerHTML = "On System Start"
+						End If
+						If (inStr(ActionArray(i).TaskName,"Weather")>0) Then
+							newStart_ActionOff.innerHTML = "Every " & Opt_Weather_Updater_Minutes & " Minutes"
+						End If
+					Else
+						newStatus_ActionOff.innerHTML = ActionArray(i).Action
+						newOriginalStart_ActionOff.innerHTML = Mid(ActionArray(i).OriginalStart,inStr(ActionArray(i).OriginalStart, "T")+1)
+						newStart_ActionOff.innerHTML = Mid(ActionArray(i).Start,inStr(ActionArray(i).Start, "T")+1)
+						newDays_ActionOff.innerHTML = Mid(ActionArray(i).Days,inStr(ActionArray(i).Days, ",")+1)
+						newRandomizer_ActionOff.innerHTML = ActionArray(i).Randomizer
+						newWeather_Good_ActionOff.innerHTML = ActionArray(i).Weather_Good
+						newWeather_Bad_ActionOff.innerHTML = ActionArray(i).Weather_Bad
+					End if
+					
+					Commands_ActionOff.innerHTML = "<button onclick='VBScript:DeleteTask(" & chr(34) & ActionArray(i).TaskName & chr(34) & ")'>Del.</button>"
+				
+				Next
+			End If
+		End Sub
+		
+		Sub Window_onLoad
+			window.resizeTo 1024,800
+			ShowTab "Tab2"
+			DocumentLocation = document.location
+			DocumentLocation = fso.GetParentFolderName(Right(document.location,Len(document.location)-8))
+			DocumentLocation = Replace(DocumentLocation,"/","\")
+			DocumentLocation = Replace(DocumentLocation,"%20", " ")
+			
+			IncludedByHTA = True			
+			Include "CreateScheduledTasks.vbs"			
+			Include "FetchScheduledTasks.vbs"			
+			Include "ReadOptions.vbs"
+			Include "CheckWeather.vbs"			
+			
+			
+			If Not CheckConfigFileExists Then
+				MsgBox "There is no configuration file, this is probably your first boot of the application. Please check the settings and press 'Save Options'"
+				SetDefaultOptions
+				'ShowTab "Tab2"
+			Else
+				LoadOptions
+				Set CurrentWeather = GetWeatherInfo(CityCountryID)
+				
+				If Not (CurrentWeather.CityID = false) Then
+					Sunset = CurrentWeather.Sunset			
+					Sunrise = CurrentWeather.Sunrise
+				Else
+					document.getElementById("Select_Controller").options(1).disabled = true
+					document.getElementById("Select_Controller").options(2).disabled = true
+				End If
+				ShowTab "Tab1"
+			End If			
+			
+			ArrayOfTasks = FetchScheduledTasks
+			
+			If (CheckSystemSchedules(ArrayOfTasks)) Then
+				ArrayOfTasks = FetchScheduledTasks
+			End If
+			
+			ArrayOfTasks = HighlightActiveSchedule(ArrayOfTasks)
+			
+			ScheduleListBuilder ArrayOfTasks
+			
+			Set DefaultTime = document.getElementById("Time")
+			DefaultTime.Value = Right(String(1,"0") & DatePart("h",Now()),2) & ":" & Right(String(1,"0") & DatePart("n",Now()),2) & ":" & Right(String(1,"0") & DatePart("s",Now()),2)
+		End Sub
+	</script>
+		
+	<style lang="text/css">
+	
+		#Tab1 {position: absolute;}
+		#Tab2 {position: absolute;}
+		#TopMenu {border-bottom: 1px solid #000000;}
+		
+		.Short {width: 50px;}
+		.MediumShort {width: 75px;}
+		.Normal {width: 100px;}
+		.MediumLong {width: 150px;}
+		.Long {width: 200px;}
+		.Long_2 {width: 400px;}
+		.Long_3 {width: 500px;}
+		body {background-color: #7B7E8D; font-family: verdana;}
+		table {border: 1px solid #000000; margin-bottom: 0px;  font-size: 10pt; width: 100%}	
+		
+		.DeviceRow {background-color: #FFF000;}
+		.ComputerList {Width: 260px;}
+		.Content {background-color: #CECED2; margin-bottom: 5px;}
+		.Headline {background-color: #9D9EA8; border-bottom: 1px solid #000000; font-size: 14px; font-weight: bold;}
+		.Headline_Second {border-bottom: 1px solid #000000; font-size: 14px; font-weight: bold; padding-top: 5px;}
+		.Module {border: 1px solid #000000; font-size: 10pt; width: 100%; margin-bottom: 10px;}
+		.Top {vertical-align: top;}
+		
+		.ScheduleTable {border: 0px solid #000000;  font-size: 10pt; width: 100%}
+		#ScheduledEvents_Body {width: 100%; overflow-x: auto; padding-bottom: 20px;}
+		#ScheduledEvents_Body_Table {width: 1600px;} 
+		td {vertical-align: top;}
+		
+		#NewSchedule_Body {width: 100%}
+		
+		#Presenting_TA { width: 100%; height: 650px}
+		
+		.Example {font-size: 10px; display: block;}
+			
+		
+		.color-primary-0 { color: #7B7E8D }	/* Main Primary color */
+		.color-primary-1 { color: #CECED2 }
+		.color-primary-2 { color: #9D9EA8 }
+		.color-primary-3 { color: #5F6276 }
+		.color-primary-4 { color: #444860 }	
+	</style>
+	
+	<body>
+		<div id="TopMenu"><button onclick="Javascript:ShowTab('Tab1')">Schedule</button><button onclick="Javascript:ShowTab('Tab2')">Options</button></div>
+		
+		<div id="Tab1">
+			<div id="NewSchedule_Headline" class="Headline">New Schedule</div>
+			<div id="NewSchedule_Body"  class="Content">
+				<table cellpadding="0" cellspacing="0">
+					<tr class="Headline_Second"><td class="Normal">Device</td><td>Day of Week</td></tr>
+					<tr><td>
+						<select id="Select_Device">
+							<option value="1-1">1-1
+							<option value="1-2">1-2
+						</select>
+					</td><td colspan="5">
+						<label><input type="checkbox" id="DayOfWeek" Value="MON">Monday</label>
+						<label><input type="checkbox" id="DayOfWeek" Value="TUE">Tuesday</label>
+						<label><input type="checkbox" id="DayOfWeek" Value="WED">Wednesday</label>
+						<label><input type="checkbox" id="DayOfWeek" Value="THU">Thursday</label>
+						<label><input type="checkbox" id="DayOfWeek" Value="FRI">Friday</label>
+						<label><input type="checkbox" id="DayOfWeek" Value="SAT">Saturday</label>
+						<label><input type="checkbox" id="DayOfWeek" Value="SUN">Sunday</label>
+					</td>
+				</tr>
+				<tr class="Headline_Second"><td class="Normal">Action</td><td class="Normal">Controller</td><td class="Normal CanHide">Time</td><td class="Long">Randomizer(+/-)</td><td class="Long">Weather Impact(+/-)</td></tr>
+				<tr>
+					<td>
+						<select id="Select_Action">
+							<option value="On">On
+							<option value="Off">Off
+						</select>
+					</td><td>
+						<select id="Select_Controller" onChange="Javascript:ChangeController();">
+							<option value="Time">Time
+							<option value="Sundown" title="Adjust to sundown time">Sundown
+							<option value="Sunrise" title="Adjust to the time of sunrise">Sunrise
+						</select>
+					</td><td  class="CanHide">
+						<input type="text" name="Time" id="Time" class="MediumShort">
+					</td><td>
+						<select id="Select_Randomizer">
+							<option value="+">+
+							<option value="-">-
+							<option value="both">+/-
+						</select>
+						<select id="Select_Randomizer_Value">
+							<option value="0">0
+							<option value="5">5
+							<option value="10">10
+							<option value="15">15
+							<option value="20">20
+							<option value="25">25
+							<option value="30">30
+						</select>Minutes
+					</td><td>
+						<select id="Select_Weather_Good">
+							<option value="+">+
+							<option value="-">-
+						</select>
+						<select id="Select_Weather_Good_Time">
+							<option value="0">0
+							<option value="1">1
+							<option value="2">2
+							<option value="3">3
+							<option value="4">4
+							<option value="5">5
+							<option value="6">6
+						</select>Hours (Good Weather)<br>
+						<select id="Select_Weather_Bad">
+							<option value="+">+
+							<option value="-">-
+						</select>
+						<select id="Select_Weather_Bad_Time">
+							<option value="0">0
+							<option value="1">1
+							<option value="2">2
+							<option value="3">3
+							<option value="4">4
+							<option value="5">5
+							<option value="6">6
+						</select>Hours (Bad Weather)
+					</td></tr>
+					<tr><td colspan="2"><button onClick="Javascript:CreateSchedule();">Create Schedule</button></td></tr>
+				</table>
+			</div>
+			<div id="ScheduledEvents_Headline"  class="Headline">Scheduled Events</div>
+			<div id="ScheduledEvents_Body" class="Content"><table id="ScheduledEvents_Body_Table" cellpadding="0" cellspacing="0"><tr><td>Nothing scheduled</td></tr></table></div>
+		</div>
+		
+		<div id="Tab2">
+			<div id="Options_Headline" class="Headline">Options!</div>
+			<div id="Options_Body" class="Content">
+				<table cellpadding="0" cellspacing="0">
+				<tr class="Headline"><td>General Application Configuration:</td><td></td></tr>
+				<tr class="Content"><td>Path To tdtool.exe <span  class="Example">Select the folder containing tdtool.exe - This can be "C:\Program Files\Telldus\"</span></td><td><input type="text" name="Path_To_tdTools"><button onClick="VBScript:BrowseFolder">Browse..</button><span id="Path_To_tdTools_Exists"></span></td></tr>
+				<tr class="Content"><td>Repeat action after: (minutes)</td><td><input type="text" name="Action_Repeat_Minutes"></td></tr>
+				<tr class="Content"><td>Retry action x times:</td><td><input type="text" name="Action_Repeat_Times"></td></tr>
+				<tr class="Headline"><td>Weather/Sunrise/Sunset Configuration</td><td></td></tr>
+				<tr class="Content"><td>Run weather/sunrise/sunset updater every: (minutes)</td><td><input type="text" name="Weather_Updater_Minutes"></td></tr>
+				<tr class="Content"><td>City,Countrycode<br><span class="Example">Gothenburg,SE - English characters only. Weather Impact/Sun controller is disabled if invalid city/country.</span></td><td><input type="text" name="CityCountry"><button onClick="VBScript:TestWeather()">Verify Location</button></td></tr>
+				<tr class="Content"><td>Good Weather Codes (seperate with colon (,))<br><span class="Example">See <a target="_NEW" href="http://openweathermap.org/weather-conditions">http://openweathermap.org/weather-conditions</a> for a list of weather codes. Those not entered here automatically falls under Bad Weather</span></td><td><input type="text" name="GoodCodes"></td></tr>
+				<tr class="Headline"><td>AutoRemote Configuration</td><td></td></tr>
+				<tr class="Content"><td>AutoRemote Key:</td><td><input type="text" name="AutoRemote_Key"></td></tr>
+				<tr class="Content"><td>AutoRemote Password:</td><td><input type="text" name="AutoRemote_Pass"></td></tr>
+				<tr class="Headline"><td></td><td><button name="Save_Options" onClick="VBScript:Save_Options">Save Options</button></td></tr>
+				<tr><td>&nbsp;</td></tr>
+				<tr class="Headline"><td>Verification of settings and application schedules:</td><td></td></tr>
+				<tr class="Content"><td>Startup shortcut for resetting devices to their schedule:</td><td><span id="ResetScheduleExists"></span></td></tr>
+				<tr class="Content"><td>Repeating schedule for checking weather and updating schedules:</td><td><span id="CheckWeatherExists"></span></td></tr>
+				</table>
+			</div>
+		</div>
+	</body>
+</html>
