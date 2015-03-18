@@ -86,33 +86,34 @@
 						Next
 					End If
 				Next
-			End If
-
-			Const ssfSTARTUP = &H7
-			Set startupFolder = objShell.NameSpace(ssfSTARTUP)
 			
-			If Not startupFolder Is Nothing Then
-				If Not (fso.FileExists(startupFolder.Self.Path & "\vbs_tellstick_reset.vbs.lnk")) and (UBound(ScheduledTasksArray)>-1) Then
-					Set ResetLnk = objShell_wscript.CreateShortcut(startupFolder.Self.Path & "\vbs_tellstick_reset.vbs.lnk")
-					ResetLnk.TargetPath = DocumentLocation & "\Actions\ResetScheduledTasks.vbs"
-					ResetLnk.WindowStyle = 0
-					ResetLnk.Description  = "Script to reset Tellstick devices to match the schedules set."
-					ResetLnk.WorkingDirectory  = DocumentLocation & "\Actions"
-					ResetLnk.Save
-					document.getElementById("ResetScheduleExists").innerHTML = "Exists"
-				Else 
-					document.getElementById("ResetScheduleExists").innerHTML = "Exists"
-				End If
-			Else
-				objShell_wscript.LogEvent 4, "Unable to locate users startup folder."
-			End If
+
+                Const ssfSTARTUP = &H7
+                Set startupFolder = objShell.NameSpace(ssfSTARTUP)
+
+                If Not startupFolder Is Nothing Then
+                    If Not (fso.FileExists(startupFolder.Self.Path & "\vbs_tellstick_reset.vbs.lnk")) Then
+                        Set ResetLnk = objShell_wscript.CreateShortcut(startupFolder.Self.Path & "\vbs_tellstick_reset.vbs.lnk")
+                        ResetLnk.TargetPath = DocumentLocation & "\Actions\ResetScheduledTasks.vbs"
+                        ResetLnk.WindowStyle = 0
+                        ResetLnk.Description  = "Script to reset Tellstick devices to match the schedules set."
+                        ResetLnk.WorkingDirectory  = DocumentLocation & "\Actions"
+                        ResetLnk.Save
+                        document.getElementById("ResetScheduleExists").innerHTML = "Exists"
+                    Else 
+                        document.getElementById("ResetScheduleExists").innerHTML = "Exists"
+                    End If
+                Else
+                    objShell_wscript.LogEvent 4, "Unable to locate users startup folder."
+                End If
 
 
-			' This creates the schedule for updating weather information on a regular basis.
-			If (Not SystemSchedule_UpdateWeather_Exists) and (UBound(ScheduledTasksArray)>-1) Then
-				objShell_wscript.Run "SchTasks.exe /create /SC MINUTE /MO " & Opt_Weather_Updater_Minutes & " /TN " & chr(34) & "VBS_Tellstick\Application_On_UpdateWeather" & chr(34) & " /TR " & chr(34) & DocumentLocation & "\Actions\UpdateScheduledTasks.vbs" & chr(34) ,0, True
-				Result = True
-			End If			
+                ' This creates the schedule for updating weather information on a regular basis.
+                If (Not SystemSchedule_UpdateWeather_Exists) Then
+                    objShell_wscript.Run "SchTasks.exe /create /SC MINUTE /MO " & Opt_Weather_Updater_Minutes & " /TN " & chr(34) & "VBS_Tellstick\Application_On_UpdateWeather" & chr(34) & " /TR " & chr(34) & DocumentLocation & "\Actions\UpdateScheduledTasks.vbs" & chr(34) ,0, True
+                    Result = True
+                End If	
+            End If
 			CheckSystemSchedules = Result
 		End Function
 		

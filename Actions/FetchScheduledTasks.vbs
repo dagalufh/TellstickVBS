@@ -21,10 +21,10 @@ Function FetchScheduledTasks
 	' Define the root folder.
 	If (IncludedByHTA) Then
 		FolderAppend = ""
-		DocumentLocation = document.location
+		'DocumentLocation = document.location
 		
-		DocumentLocation = fso.GetParentFolderName(Right(document.location,Len(document.location)-8))
-		DocumentLocation = Replace(DocumentLocation,"/","\")
+		'DocumentLocation = fso.GetParentFolderName(Right(document.location,Len(document.location)-8))
+		'DocumentLocation = Replace(DocumentLocation,"/","\")
 		
 	Else
 		DocumentLocation = fso.GetParentFolderName(WScript.ScriptFullName)
@@ -224,83 +224,84 @@ End Function
 Function HighlightActiveSchedule (ScheduledArray)
 	Dim Mon, Tue, Wed, Thu, Fri, Sat, Sun, Action, Action_Days, Day, Temp, Device, Thing, DaysOfWeek, i , TodayReached, StartDayOfWeek, CurrentDayOfWeek, Time, DeviceStatus, Actions, CurrentTime
 	' First, For each device in the already created array (FetchScheduledTasks) add each time for the correct day.
-	For Each Device in ScheduledArray
-		
-		' Define one array for each day of the week
-		Mon = array()
-		Tue = array()
-		Wed = array()
-		Thu = array()
-		Fri = array()
-		Sat = array()
-		Sun = array()
-		
-		' For each action on and for each action off
-		If (Ubound(Device.Action_On) >= 0) Then
-			
-			AddToDay Device.Action_On, Mon,Tue,Wed,Thu,Fri,Sat,Sun
-		End If
-		If (Ubound(Device.Action_Off) >= 0) Then
-			AddToDay Device.Action_Off, Mon,Tue,Wed,Thu,Fri,Sat,Sun
-		End If
-		
-		' Now we need to bubblesort each of those days.
-		Mon = BubbleSort_Days(Mon)
-		Tue = BubbleSort_Days(Tue)
-		Wed = BubbleSort_Days(Wed)
-		Thu = BubbleSort_Days(Thu)
-		Fri = BubbleSort_Days(Fri)
-		Sat = BubbleSort_Days(Sat)
-		Sun = BubbleSort_Days(Sun)
-		
-		DaysOfWeek = array(Sun,Mon,Tue,Wed,Thu,Fri,Sat)
-		
-		CurrentDayOfWeek = Weekday(date) -1 ' Zero-based day of week number
-		CurrentTime = Right(String(1,"0") & DatePart("h",Now()),2) & ":" & Right(String(1,"0") & DatePart("n",Now()),2)
-		TodayReached = False
-		
-		DeviceStatus = ""
-		
-		If (CurrentDayOfWeek=6) Then
-			StartDayOfWeek = 0
-		Else
-			StartDayOfWeek = CurrentDayOfWeek+1
-		End If
-			
-		Do
-		
-			If (StartDayOfWeek = CurrentDayOfWeek) Then
-				TodayReached = True
-			End If
-			
-			Day = DaysOfWeek(StartDayOfWeek)
-			For Each Time in Day
-				'MsgBox Time
-				Actions = Split(Time, ";")
-				If (TodayReached) Then
-					If (CurrentTime > Actions(0)) Then
-						DeviceStatus = Actions(1)
-					Else
-						Exit For
-					End If
-				Else	
-					DeviceStatus = Actions(1)
-				End If
-			Next
-			
-			If (StartDayOfWeek = 6) Then
-				StartDayOfWeek = 0
-			Else
-				StartDayOfWeek = StartDayOfWeek+1
-			End If
-			
-		Loop While TodayReached = False
-		Device.CurrentStatus = DeviceStatus
-		'MsgBox "Device " & Device.DeviceID & " has status: "  & DeviceStatus
-		'MsgBox Temp
-		
-	Next
-	
+    If Not (TypeName(ScheduledArray) = "String") Then
+        For Each Device in ScheduledArray
+
+            ' Define one array for each day of the week
+            Mon = array()
+            Tue = array()
+            Wed = array()
+            Thu = array()
+            Fri = array()
+            Sat = array()
+            Sun = array()
+
+            ' For each action on and for each action off
+            If (Ubound(Device.Action_On) >= 0) Then
+
+                AddToDay Device.Action_On, Mon,Tue,Wed,Thu,Fri,Sat,Sun
+            End If
+            If (Ubound(Device.Action_Off) >= 0) Then
+                AddToDay Device.Action_Off, Mon,Tue,Wed,Thu,Fri,Sat,Sun
+            End If
+
+            ' Now we need to bubblesort each of those days.
+            Mon = BubbleSort_Days(Mon)
+            Tue = BubbleSort_Days(Tue)
+            Wed = BubbleSort_Days(Wed)
+            Thu = BubbleSort_Days(Thu)
+            Fri = BubbleSort_Days(Fri)
+            Sat = BubbleSort_Days(Sat)
+            Sun = BubbleSort_Days(Sun)
+
+            DaysOfWeek = array(Sun,Mon,Tue,Wed,Thu,Fri,Sat)
+
+            CurrentDayOfWeek = Weekday(date) -1 ' Zero-based day of week number
+            CurrentTime = Right(String(1,"0") & DatePart("h",Now()),2) & ":" & Right(String(1,"0") & DatePart("n",Now()),2)
+            TodayReached = False
+
+            DeviceStatus = ""
+
+            If (CurrentDayOfWeek=6) Then
+                StartDayOfWeek = 0
+            Else
+                StartDayOfWeek = CurrentDayOfWeek+1
+            End If
+
+            Do
+
+                If (StartDayOfWeek = CurrentDayOfWeek) Then
+                    TodayReached = True
+                End If
+
+                Day = DaysOfWeek(StartDayOfWeek)
+                For Each Time in Day
+                    'MsgBox Time
+                    Actions = Split(Time, ";")
+                    If (TodayReached) Then
+                        If (CurrentTime > Actions(0)) Then
+                            DeviceStatus = Actions(1)
+                        Else
+                            Exit For
+                        End If
+                    Else	
+                        DeviceStatus = Actions(1)
+                    End If
+                Next
+
+                If (StartDayOfWeek = 6) Then
+                    StartDayOfWeek = 0
+                Else
+                    StartDayOfWeek = StartDayOfWeek+1
+                End If
+
+            Loop While TodayReached = False
+            Device.CurrentStatus = DeviceStatus
+            'MsgBox "Device " & Device.DeviceID & " has status: "  & DeviceStatus
+            'MsgBox Temp
+
+        Next
+	End If
 	HighlightActiveSchedule = ScheduledArray
 End Function
 
